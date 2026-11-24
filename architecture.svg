@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 940" width="1400" height="940" font-family="Helvetica, Arial, sans-serif">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<rect width="1400" height="940" fill="#ffffff"/>
+<text x="700" y="38" text-anchor="middle" font-size="24" font-weight="700" fill="#232F3E">Secure Multi-Tier Architecture - Defense in Depth</text>
+<text x="700" y="60" text-anchor="middle" font-size="13" fill="#5a6877">KMS - Secrets Manager - GuardDuty - Security Hub - Config - CloudTrail - WAF - EventBridge + Lambda</text>
+<rect x="150" y="72" width="1235" height="848" rx="10" fill="none" stroke="#232F3E" stroke-width="2"/>
+<text x="164" y="96" font-size="15" font-weight="700" fill="#232F3E">AWS Cloud (single region, two Availability Zones)</text>
+<rect x="300" y="104" width="700" height="541" rx="10" fill="none" stroke="#248814" stroke-width="2" stroke-dasharray="8 5"/>
+<text x="314" y="128" font-size="15" font-weight="700" fill="#248814">VPC 10.20.0.0/16</text>
+<rect x="320" y="135" width="660" height="140" rx="10" fill="#f3faf1" stroke="#248814" stroke-width="2"/>
+<text x="334" y="159" font-size="15" font-weight="700" fill="#248814">Web tier - public subnets (10.20.0.0/24, 10.20.1.0/24)</text>
+<rect x="320" y="290" width="660" height="170" rx="10" fill="#f1f8fc" stroke="#147EBA" stroke-width="2"/>
+<text x="334" y="314" font-size="15" font-weight="700" fill="#147EBA">App tier - private subnets (10.20.10.0/24, 10.20.11.0/24)</text>
+<rect x="320" y="475" width="660" height="150" rx="10" fill="#fdf3f4" stroke="#DD344C" stroke-width="2"/>
+<text x="334" y="499" font-size="15" font-weight="700" fill="#DD344C">Data tier - isolated subnets (10.20.20.0/24, 10.20.21.0/24) - no internet route</text>
+<rect x="28" y="298" width="64" height="64" rx="9" fill="#232F3E"/>
+<text x="60" y="336" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">USERS</text>
+<text x="60" y="380" text-anchor="middle" font-size="12.5" fill="#232F3E">Internet users</text>
+<rect x="193" y="298" width="64" height="64" rx="9" fill="#DD344C"/>
+<text x="225" y="336" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">WAF</text>
+<text x="225" y="380" text-anchor="middle" font-size="12.5" fill="#232F3E">AWS WAF</text>
+<text x="225" y="395" text-anchor="middle" font-size="11" fill="#5a6877">SQLi / XSS / rate limit</text>
+<rect x="193" y="418" width="64" height="64" rx="9" fill="#DD344C"/>
+<text x="225" y="456" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">SHLD</text>
+<text x="225" y="500" text-anchor="middle" font-size="12.5" fill="#232F3E">Shield Standard</text>
+<text x="225" y="515" text-anchor="middle" font-size="11" fill="#5a6877">DDoS protection</text>
+<line x1="95" y1="330" x2="190" y2="330" stroke="#232F3E" stroke-width="2" marker-end="url(#a)"/>
+<line x1="262" y1="330" x2="395" y2="205" stroke="#232F3E" stroke-width="2" marker-end="url(#a)"/>
+<rect x="398" y="173" width="64" height="64" rx="9" fill="#8C4FFF"/>
+<text x="430" y="211" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">ALB</text>
+<text x="430" y="255" text-anchor="middle" font-size="12.5" fill="#232F3E">Application LB</text>
+<text x="430" y="270" text-anchor="middle" font-size="11" fill="#5a6877">TLS 1.2 / 1.3</text>
+<rect x="568" y="173" width="64" height="64" rx="9" fill="#8C4FFF"/>
+<text x="600" y="211" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">IGW</text>
+<text x="600" y="255" text-anchor="middle" font-size="12.5" fill="#232F3E">Internet Gateway</text>
+<rect x="738" y="173" width="64" height="64" rx="9" fill="#8C4FFF"/>
+<text x="770" y="211" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">NAT</text>
+<text x="770" y="255" text-anchor="middle" font-size="12.5" fill="#232F3E">NAT Gateway</text>
+<rect x="398" y="348" width="64" height="64" rx="9" fill="#ED7100"/>
+<text x="430" y="386" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">EC2</text>
+<text x="430" y="430" text-anchor="middle" font-size="12.5" fill="#232F3E">EC2 Auto Scaling</text>
+<text x="430" y="445" text-anchor="middle" font-size="11" fill="#5a6877">IMDSv2, KMS-encrypted EBS</text>
+<rect x="588" y="348" width="64" height="64" rx="9" fill="#E7157B"/>
+<text x="620" y="386" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">SSM</text>
+<text x="620" y="430" text-anchor="middle" font-size="12.5" fill="#232F3E">Session Manager</text>
+<text x="620" y="445" text-anchor="middle" font-size="11" fill="#5a6877">no SSH</text>
+<rect x="778" y="348" width="64" height="64" rx="9" fill="#ED7100"/>
+<text x="810" y="386" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">LAMBDA</text>
+<text x="810" y="430" text-anchor="middle" font-size="12.5" fill="#232F3E">Rotation Lambda</text>
+<text x="810" y="445" text-anchor="middle" font-size="11" fill="#5a6877">30-day rotation</text>
+<line x1="430" y1="282" x2="430" y2="345" stroke="#232F3E" stroke-width="2" marker-end="url(#a)"/>
+<rect x="398" y="513" width="64" height="64" rx="9" fill="#C925D1"/>
+<text x="430" y="551" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">RDS</text>
+<text x="430" y="595" text-anchor="middle" font-size="12.5" fill="#232F3E">RDS MySQL</text>
+<text x="430" y="610" text-anchor="middle" font-size="11" fill="#5a6877">KMS at rest, TLS in transit</text>
+<rect x="588" y="513" width="64" height="64" rx="9" fill="#8C4FFF"/>
+<text x="620" y="551" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">NACL</text>
+<text x="620" y="595" text-anchor="middle" font-size="12.5" fill="#232F3E">NACL + SGs</text>
+<text x="620" y="610" text-anchor="middle" font-size="11" fill="#5a6877">3306 from app only</text>
+<line x1="430" y1="415" x2="430" y2="510" stroke="#232F3E" stroke-width="2" marker-end="url(#a)"/>
+<text x="440" y="470" font-size="11" fill="#232F3E">3306</text>
+<line x1="780" y1="415" x2="466" y2="540" stroke="#8C4FFF" stroke-width="2" marker-end="url(#a)"/>
+<rect x="1030" y="105" width="335" height="540" rx="10" fill="none" stroke="#DD344C" stroke-width="2"/>
+<text x="1044" y="129" font-size="15" font-weight="700" fill="#DD344C">Encryption and secrets</text>
+<rect x="1078" y="158" width="64" height="64" rx="9" fill="#DD344C"/>
+<text x="1110" y="196" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">KMS</text>
+<text x="1110" y="240" text-anchor="middle" font-size="12.5" fill="#232F3E">KMS CMKs</text>
+<text x="1110" y="255" text-anchor="middle" font-size="11" fill="#5a6877">data key + audit key</text>
+<rect x="1253" y="158" width="64" height="64" rx="9" fill="#DD344C"/>
+<text x="1285" y="196" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">SECRETS</text>
+<text x="1285" y="240" text-anchor="middle" font-size="12.5" fill="#232F3E">Secrets Manager</text>
+<text x="1285" y="255" text-anchor="middle" font-size="11" fill="#5a6877">RDS creds, rotated</text>
+<rect x="1078" y="328" width="64" height="64" rx="9" fill="#E7157B"/>
+<text x="1110" y="366" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">PARAM</text>
+<text x="1110" y="410" text-anchor="middle" font-size="12.5" fill="#232F3E">SSM Parameter Store</text>
+<text x="1110" y="425" text-anchor="middle" font-size="11" fill="#5a6877">SecureString (CMK)</text>
+<rect x="1253" y="328" width="64" height="64" rx="9" fill="#7AA116"/>
+<text x="1285" y="366" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">S3</text>
+<text x="1285" y="410" text-anchor="middle" font-size="12.5" fill="#232F3E">S3 app bucket</text>
+<text x="1285" y="425" text-anchor="middle" font-size="11" fill="#5a6877">SSE-KMS, TLS only</text>
+<rect x="1163" y="498" width="64" height="64" rx="9" fill="#DD344C"/>
+<text x="1195" y="536" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">IAM</text>
+<text x="1195" y="580" text-anchor="middle" font-size="12.5" fill="#232F3E">IAM + boundary</text>
+<text x="1195" y="595" text-anchor="middle" font-size="11" fill="#5a6877">least privilege + SCPs</text>
+<rect x="170" y="665" width="1195" height="240" rx="10" fill="none" stroke="#E7157B" stroke-width="2"/>
+<text x="184" y="689" font-size="15" font-weight="700" fill="#E7157B">Detection, audit and automated response</text>
+<rect x="208" y="728" width="64" height="64" rx="9" fill="#E7157B"/>
+<text x="240" y="766" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">TRAIL</text>
+<text x="240" y="810" text-anchor="middle" font-size="12.5" fill="#232F3E">CloudTrail</text>
+<text x="240" y="825" text-anchor="middle" font-size="11" fill="#5a6877">multi-region, validated</text>
+<rect x="353" y="728" width="64" height="64" rx="9" fill="#E7157B"/>
+<text x="385" y="766" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">CFG</text>
+<text x="385" y="810" text-anchor="middle" font-size="12.5" fill="#232F3E">AWS Config</text>
+<text x="385" y="825" text-anchor="middle" font-size="11" fill="#5a6877">rules + SSM fixes</text>
+<rect x="498" y="728" width="64" height="64" rx="9" fill="#DD344C"/>
+<text x="530" y="766" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">GD</text>
+<text x="530" y="810" text-anchor="middle" font-size="12.5" fill="#232F3E">GuardDuty</text>
+<text x="530" y="825" text-anchor="middle" font-size="11" fill="#5a6877">Recon / Backdoor / Crypto</text>
+<rect x="668" y="728" width="64" height="64" rx="9" fill="#DD344C"/>
+<text x="700" y="766" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">HUB</text>
+<text x="700" y="810" text-anchor="middle" font-size="12.5" fill="#232F3E">Security Hub</text>
+<text x="700" y="825" text-anchor="middle" font-size="11" fill="#5a6877">CIS - PCI DSS - FSBP</text>
+<rect x="838" y="728" width="64" height="64" rx="9" fill="#E7157B"/>
+<text x="870" y="766" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">EVT</text>
+<text x="870" y="810" text-anchor="middle" font-size="12.5" fill="#232F3E">EventBridge</text>
+<text x="870" y="825" text-anchor="middle" font-size="11" fill="#5a6877">severity >= 7, CRITICAL</text>
+<rect x="988" y="728" width="64" height="64" rx="9" fill="#ED7100"/>
+<text x="1020" y="766" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">LAMBDA</text>
+<text x="1020" y="810" text-anchor="middle" font-size="12.5" fill="#232F3E">Responder Lambda</text>
+<text x="1020" y="825" text-anchor="middle" font-size="11" fill="#5a6877">quarantine + snapshot</text>
+<rect x="1138" y="728" width="64" height="64" rx="9" fill="#E7157B"/>
+<text x="1170" y="766" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">SNS</text>
+<text x="1170" y="810" text-anchor="middle" font-size="12.5" fill="#232F3E">SNS alerts</text>
+<text x="1170" y="825" text-anchor="middle" font-size="11" fill="#5a6877">email</text>
+<rect x="1268" y="728" width="64" height="64" rx="9" fill="#E7157B"/>
+<text x="1300" y="766" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">CW</text>
+<text x="1300" y="810" text-anchor="middle" font-size="12.5" fill="#232F3E">CW Alarms</text>
+<text x="1300" y="825" text-anchor="middle" font-size="11" fill="#5a6877">CIS metric filters</text>
+<line x1="562" y1="760" x2="667" y2="760" stroke="#232F3E" stroke-width="2" marker-end="url(#a)"/>
+<line x1="733" y1="760" x2="837" y2="760" stroke="#232F3E" stroke-width="2" marker-end="url(#a)"/>
+<line x1="903" y1="760" x2="987" y2="760" stroke="#232F3E" stroke-width="2" marker-end="url(#a)"/>
+<line x1="1053" y1="760" x2="1137" y2="760" stroke="#232F3E" stroke-width="2" marker-end="url(#a)"/>
+<path d="M385,834 C385,876 700,876 700,836" fill="none" stroke="#232F3E" stroke-width="2" marker-end="url(#a)"/>
+<text x="470" y="882" font-size="11" fill="#232F3E">compliance findings</text>
+<line x1="1268" y1="760" x2="1206" y2="760" stroke="#232F3E" stroke-width="2" marker-end="url(#a)"/>
+<text x="190" y="900" font-size="12" fill="#5a6877">Logs land in a KMS-encrypted, versioned audit bucket. Config auto-remediates public/unencrypted S3 and open SSH. Quarantine = no-traffic security group + EBS forensic snapshots.</text>
+</svg>

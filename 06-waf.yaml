@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 06 - AWS WAF web ACL on the ALB (SQLi, XSS/common exploits, bad inputs, IP reputation, rate limit). Shield Standard is automatic.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: fortress3t
+  RateLimit:
+    Type: Number
+    Default: 1000
+    Description: Max requests per 5 minutes per IP
+
+Resources:
+  WebAcl:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub '${ProjectName}-web-acl'
+      Scope: REGIONAL
+      DefaultAction: { Allow: {} }
+      VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: !Sub '${ProjectName}-web-acl' }
+      Rules:
+        - Name: RateLimitPerIp
+          Priority: 0
+          Action: { Block: {} }
+          Statement: { RateBasedStatement: { Limit: !Ref RateLimit, AggregateKeyType: IP } }
+          VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: RateLimitPerIp }
+        - Name: AmazonIpReputation
+          Priority: 1
+          OverrideAction: { None: {} }
+          Statement: { ManagedRuleGroupStatement: { VendorName: AWS, Name: AWSManagedRulesAmazonIpReputationList } }
+          VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: AmazonIpReputation }
+        - Name: CommonRuleSet
+          Priority: 2
+          OverrideAction: { None: {} }
+          Statement: { ManagedRuleGroupStatement: { VendorName: AWS, Name: AWSManagedRulesCommonRuleSet } }
+          VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: CommonRuleSet }
+        - Name: SqlInjection
+          Priority: 3
+          OverrideAction: { None: {} }
+          Statement: { ManagedRuleGroupStatement: { VendorName: AWS, Name: AWSManagedRulesSQLiRuleSet } }
+          VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: SqlInjection }
+        - Name: KnownBadInputs
+          Priority: 4
+          OverrideAction: { None: {} }
+          Statement: { ManagedRuleGroupStatement: { VendorName: AWS, Name: AWSManagedRulesKnownBadInputsRuleSet } }
+          VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: KnownBadInputs }
+
+  WebAclAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties:
+      ResourceArn: { 'Fn::ImportValue': !Sub '${ProjectName}-AlbArn' }
+      WebACLArn: !GetAtt WebAcl.Arn
+
+Outputs:
+  WebAclArn:
+    Value: !GetAtt WebAcl.Arn

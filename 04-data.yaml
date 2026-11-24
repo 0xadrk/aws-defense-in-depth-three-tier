@@ -1,0 +1,132 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::SecretsManager-2020-07-23
+Description: 04 - Data tier - KMS-encrypted RDS MySQL, Secrets Manager with automatic rotation, encrypted S3 bucket
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: fortress3t
+  DbInstanceClass:
+    Type: String
+    Default: db.t3.micro
+  MultiAz:
+    Type: String
+    Default: 'false'
+    AllowedValues: [ 'true', 'false' ]
+
+Resources:
+  DbSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${ProjectName}/rds/master'
+      Description: RDS master credentials (rotated automatically)
+      KmsKeyId: { 'Fn::ImportValue': !Sub '${ProjectName}-DataKeyArn' }
+      GenerateSecretString:
+        SecretStringTemplate: '{"username":"dbadmin"}'
+        GenerateStringKey: password
+        PasswordLength: 24
+        ExcludeCharacters: '"@/\'
+
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Isolated data subnets
+      SubnetIds: !Split [ ',', { 'Fn::ImportValue': !Sub '${ProjectName}-DataSubnetIds' } ]
+
+  DbParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Description: Force TLS for every client connection
+      Family: mysql8.0
+      Parameters:
+        require_secure_transport: '1'
+
+  Db:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    Properties:
+      DBInstanceIdentifier: !Sub '${ProjectName}-db'
+      Engine: mysql
+      EngineVersion: '8.0'
+      DBInstanceClass: !Ref DbInstanceClass
+      AllocatedStorage: 20
+      StorageType: gp3
+      StorageEncrypted: true
+      KmsKeyId: { 'Fn::ImportValue': !Sub '${ProjectName}-DataKeyArn' }
+      MasterUsername: !Sub '{{resolve:secretsmanager:${DbSecret}:SecretString:username}}'
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${DbSecret}:SecretString:password}}'
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      DBParameterGroupName: !Ref DbParameterGroup
+      VPCSecurityGroups: [ { 'Fn::ImportValue': !Sub '${ProjectName}-DbSgId' } ]
+      PubliclyAccessible: false
+      MultiAZ: !Ref MultiAz
+      BackupRetentionPeriod: 7
+      EnableIAMDatabaseAuthentication: true
+      EnableCloudwatchLogsExports: [ error, slowquery ]
+      CopyTagsToSnapshot: true
+      DeletionProtection: false
+
+  SecretAttachment:
+    Type: AWS::SecretsManager::SecretTargetAttachment
+    Properties:
+      SecretId: !Ref DbSecret
+      TargetId: !Ref Db
+      TargetType: AWS::RDS::DBInstance
+
+  SecretRotation:
+    Type: AWS::SecretsManager::RotationSchedule
+    DependsOn: SecretAttachment
+    Properties:
+      SecretId: !Ref DbSecret
+      HostedRotationLambda:
+        RotationType: MySQLSingleUser
+        RotationLambdaName: !Sub '${ProjectName}-rds-rotation'
+        VpcSecurityGroupIds: { 'Fn::ImportValue': !Sub '${ProjectName}-RotationSgId' }
+        VpcSubnetIds: { 'Fn::ImportValue': !Sub '${ProjectName}-AppSubnetIds' }
+        KmsKeyArn: { 'Fn::ImportValue': !Sub '${ProjectName}-DataKeyArn' }
+      RotationRules: { AutomaticallyAfterDays: 30 }
+
+  AppBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: !Sub '${ProjectName}-app-${AWS::AccountId}-${AWS::Region}'
+      VersioningConfiguration: { Status: Enabled }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+            ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: { 'Fn::ImportValue': !Sub '${ProjectName}-DataKeyArn' }
+
+  AppBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AppBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource: [ !GetAtt AppBucket.Arn, !Sub '${AppBucket.Arn}/*' ]
+            Condition: { Bool: { 'aws:SecureTransport': 'false' } }
+
+Outputs:
+  SecretArn:
+    Value: !Ref DbSecret
+    Export: { Name: !Sub '${ProjectName}-SecretArn' }
+  DbEndpoint:
+    Value: !GetAtt Db.Endpoint.Address
+  AppBucketName:
+    Value: !Ref AppBucket
+    Export: { Name: !Sub '${ProjectName}-AppBucketName' }
+  AppBucketArn:
+    Value: !GetAtt AppBucket.Arn
+    Export: { Name: !Sub '${ProjectName}-AppBucketArn' }

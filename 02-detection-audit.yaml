@@ -1,0 +1,324 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 02 - CloudTrail (multi-region, validated), AWS Config recorder, GuardDuty, Security Hub (CIS, PCI DSS, FSBP)
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: fortress3t
+  AlertEmail:
+    Type: String
+    Description: Email address that receives security alerts and CIS alarms
+
+Resources:
+  AuditBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: !Sub '${ProjectName}-audit-${AWS::AccountId}-${AWS::Region}'
+      VersioningConfiguration: { Status: Enabled }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+            ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: { 'Fn::ImportValue': !Sub '${ProjectName}-AuditKeyArn' }
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-old-logs
+            Status: Enabled
+            ExpirationInDays: 365
+            NoncurrentVersionExpiration: { NoncurrentDays: 30 }
+            AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 }
+
+  AuditBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AuditBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource: [ !GetAtt AuditBucket.Arn, !Sub '${AuditBucket.Arn}/*' ]
+            Condition: { Bool: { 'aws:SecureTransport': 'false' } }
+          - Sid: CloudTrailAclCheck
+            Effect: Allow
+            Principal: { Service: cloudtrail.amazonaws.com }
+            Action: 's3:GetBucketAcl'
+            Resource: !GetAtt AuditBucket.Arn
+            Condition:
+              StringEquals:
+                'aws:SourceArn': !Sub 'arn:${AWS::Partition}:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/${ProjectName}-trail'
+          - Sid: CloudTrailWrite
+            Effect: Allow
+            Principal: { Service: cloudtrail.amazonaws.com }
+            Action: 's3:PutObject'
+            Resource: !Sub '${AuditBucket.Arn}/AWSLogs/${AWS::AccountId}/*'
+            Condition:
+              StringEquals:
+                's3:x-amz-acl': bucket-owner-full-control
+                'aws:SourceArn': !Sub 'arn:${AWS::Partition}:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/${ProjectName}-trail'
+          - Sid: ConfigAclCheck
+            Effect: Allow
+            Principal: { Service: config.amazonaws.com }
+            Action: [ 's3:GetBucketAcl', 's3:ListBucket' ]
+            Resource: !GetAtt AuditBucket.Arn
+            Condition: { StringEquals: { 'aws:SourceAccount': !Ref AWS::AccountId } }
+          - Sid: ConfigWrite
+            Effect: Allow
+            Principal: { Service: config.amazonaws.com }
+            Action: 's3:PutObject'
+            Resource: !Sub '${AuditBucket.Arn}/config/AWSLogs/${AWS::AccountId}/*'
+            Condition:
+              StringEquals:
+                's3:x-amz-acl': bucket-owner-full-control
+                'aws:SourceAccount': !Ref AWS::AccountId
+
+  Trail:
+    Type: AWS::CloudTrail::Trail
+    DependsOn: AuditBucketPolicy
+    Properties:
+      TrailName: !Sub '${ProjectName}-trail'
+      S3BucketName: !Ref AuditBucket
+      KMSKeyId: { 'Fn::ImportValue': !Sub '${ProjectName}-AuditKeyArn' }
+      IsLogging: true
+      IsMultiRegionTrail: true
+      IncludeGlobalServiceEvents: true
+      EnableLogFileValidation: true
+      CloudWatchLogsLogGroupArn: !GetAtt TrailLogGroup.Arn
+      CloudWatchLogsRoleArn: !GetAtt TrailLogRole.Arn
+
+  ConfigRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: config.amazonaws.com }
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns: [ !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWS_ConfigRole' ]
+      Policies:
+        - PolicyName: deliver-to-audit-bucket
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [ 's3:PutObject', 's3:PutObjectAcl' ]
+                Resource: !Sub '${AuditBucket.Arn}/config/AWSLogs/${AWS::AccountId}/*'
+              - Effect: Allow
+                Action: 's3:GetBucketAcl'
+                Resource: !GetAtt AuditBucket.Arn
+              - Effect: Allow
+                Action: [ 'kms:GenerateDataKey', 'kms:Decrypt' ]
+                Resource: { 'Fn::ImportValue': !Sub '${ProjectName}-AuditKeyArn' }
+
+  ConfigRecorder:
+    Type: AWS::Config::ConfigurationRecorder
+    Properties:
+      Name: default
+      RoleARN: !GetAtt ConfigRole.Arn
+      RecordingGroup:
+        AllSupported: true
+        IncludeGlobalResourceTypes: true
+
+  ConfigDeliveryChannel:
+    Type: AWS::Config::DeliveryChannel
+    DependsOn: [ AuditBucketPolicy, ConfigRecorder ]
+    Properties:
+      Name: default
+      S3BucketName: !Ref AuditBucket
+      S3KeyPrefix: config
+      ConfigSnapshotDeliveryProperties: { DeliveryFrequency: TwentyFour_Hours }
+
+  GuardDutyDetector:
+    Type: AWS::GuardDuty::Detector
+    Properties:
+      Enable: true
+      FindingPublishingFrequency: FIFTEEN_MINUTES
+      Features:
+        - { Name: S3_DATA_EVENTS, Status: ENABLED }
+        - { Name: EBS_MALWARE_PROTECTION, Status: ENABLED }
+        - { Name: RDS_LOGIN_EVENTS, Status: ENABLED }
+        - { Name: LAMBDA_NETWORK_LOGS, Status: ENABLED }
+
+  SecurityHub:
+    Type: AWS::SecurityHub::Hub
+    DependsOn: ConfigDeliveryChannel
+    Properties:
+      EnableDefaultStandards: false
+
+  CisStandard:
+    Type: AWS::SecurityHub::Standard
+    DependsOn: SecurityHub
+    Properties:
+      StandardsArn: !Sub 'arn:${AWS::Partition}:securityhub:${AWS::Region}::standards/cis-aws-foundations-benchmark/v/1.4.0'
+
+  PciStandard:
+    Type: AWS::SecurityHub::Standard
+    DependsOn: SecurityHub
+    Properties:
+      StandardsArn: !Sub 'arn:${AWS::Partition}:securityhub:${AWS::Region}::standards/pci-dss/v/3.2.1'
+
+  FoundationalStandard:
+    Type: AWS::SecurityHub::Standard
+    DependsOn: SecurityHub
+    Properties:
+      StandardsArn: !Sub 'arn:${AWS::Partition}:securityhub:${AWS::Region}::standards/aws-foundational-security-best-practices/v/1.0.0'
+
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${ProjectName}-security-alerts'
+      KmsMasterKeyId: { 'Fn::ImportValue': !Sub '${ProjectName}-DataKeyArn' }
+      Subscription: [ { Protocol: email, Endpoint: !Ref AlertEmail } ]
+
+  TrailLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/${ProjectName}/cloudtrail'
+      RetentionInDays: 365
+      KmsKeyId: { 'Fn::ImportValue': !Sub '${ProjectName}-AuditKeyArn' }
+
+  TrailLogRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - { Effect: Allow, Principal: { Service: cloudtrail.amazonaws.com }, Action: 'sts:AssumeRole' }
+      Policies:
+        - PolicyName: write-trail-logs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [ 'logs:CreateLogStream', 'logs:PutLogEvents' ]
+                Resource: !Sub '${TrailLogGroup.Arn}'
+
+  RootUsageFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref TrailLogGroup
+      FilterPattern: '{ $.userIdentity.type = "Root" && $.userIdentity.invokedBy NOT EXISTS && $.eventType != "AwsServiceEvent" }'
+      MetricTransformations:
+        - { MetricName: RootUsage, MetricNamespace: !Sub '${ProjectName}/CISMetrics', MetricValue: '1' }
+  RootUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-RootUsage'
+      AlarmDescription: Root account used
+      Namespace: !Sub '${ProjectName}/CISMetrics'
+      MetricName: RootUsage
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [ !Ref AlertTopic ]
+
+  UnauthorizedApiCallsFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref TrailLogGroup
+      FilterPattern: '{ ($.errorCode = "*UnauthorizedOperation") || ($.errorCode = "AccessDenied*") }'
+      MetricTransformations:
+        - { MetricName: UnauthorizedApiCalls, MetricNamespace: !Sub '${ProjectName}/CISMetrics', MetricValue: '1' }
+  UnauthorizedApiCallsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-UnauthorizedApiCalls'
+      AlarmDescription: Unauthorized or denied API calls
+      Namespace: !Sub '${ProjectName}/CISMetrics'
+      MetricName: UnauthorizedApiCalls
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [ !Ref AlertTopic ]
+
+  ConsoleLoginNoMfaFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref TrailLogGroup
+      FilterPattern: '{ ($.eventName = "ConsoleLogin") && ($.additionalEventData.MFAUsed != "Yes") && ($.userIdentity.type = "IAMUser") && ($.responseElements.ConsoleLogin = "Success") }'
+      MetricTransformations:
+        - { MetricName: ConsoleLoginNoMfa, MetricNamespace: !Sub '${ProjectName}/CISMetrics', MetricValue: '1' }
+  ConsoleLoginNoMfaAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-ConsoleLoginNoMfa'
+      AlarmDescription: Console login without MFA
+      Namespace: !Sub '${ProjectName}/CISMetrics'
+      MetricName: ConsoleLoginNoMfa
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [ !Ref AlertTopic ]
+
+  CloudTrailChangesFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref TrailLogGroup
+      FilterPattern: '{ ($.eventName = CreateTrail) || ($.eventName = UpdateTrail) || ($.eventName = DeleteTrail) || ($.eventName = StartLogging) || ($.eventName = StopLogging) }'
+      MetricTransformations:
+        - { MetricName: CloudTrailChanges, MetricNamespace: !Sub '${ProjectName}/CISMetrics', MetricValue: '1' }
+  CloudTrailChangesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-CloudTrailChanges'
+      AlarmDescription: CloudTrail configuration changed
+      Namespace: !Sub '${ProjectName}/CISMetrics'
+      MetricName: CloudTrailChanges
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [ !Ref AlertTopic ]
+
+  KmsKeyDisabledOrDeletedFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref TrailLogGroup
+      FilterPattern: '{ ($.eventSource = kms.amazonaws.com) && (($.eventName = DisableKey) || ($.eventName = ScheduleKeyDeletion)) }'
+      MetricTransformations:
+        - { MetricName: KmsKeyDisabledOrDeleted, MetricNamespace: !Sub '${ProjectName}/CISMetrics', MetricValue: '1' }
+  KmsKeyDisabledOrDeletedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-KmsKeyDisabledOrDeleted'
+      AlarmDescription: KMS key disabled or scheduled for deletion
+      Namespace: !Sub '${ProjectName}/CISMetrics'
+      MetricName: KmsKeyDisabledOrDeleted
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [ !Ref AlertTopic ]
+
+Outputs:
+  AuditBucketName:
+    Value: !Ref AuditBucket
+    Export: { Name: !Sub '${ProjectName}-AuditBucketName' }
+  DetectorId:
+    Value: !Ref GuardDutyDetector
+  AlertTopicArn:
+    Value: !Ref AlertTopic
+    Export: { Name: !Sub '${ProjectName}-AlertTopicArn' }

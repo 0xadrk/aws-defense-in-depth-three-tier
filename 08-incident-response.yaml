@@ -1,0 +1,93 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 08 - Incident response - EventBridge routes GuardDuty (severity >= 7) and Security Hub CRITICAL findings to a Lambda that quarantines instances and alerts via SNS
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: fortress3t
+  SeverityThreshold:
+    Type: Number
+    Default: 7
+  DryRun:
+    Type: String
+    Default: 'false'
+    AllowedValues: [ 'true', 'false' ]
+    Description: When true the Lambda only reports what it would do
+
+Resources:
+  ResponderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - { Effect: Allow, Principal: { Service: lambda.amazonaws.com }, Action: 'sts:AssumeRole' }
+      ManagedPolicyArns: [ !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole' ]
+      Policies:
+        - PolicyName: quarantine-and-notify
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [ 'ec2:DescribeInstances', 'ec2:DescribeVolumes', 'ec2:ModifyInstanceAttribute', 'ec2:CreateSnapshot', 'ec2:CreateTags' ]
+                Resource: '*'
+              - Effect: Allow
+                Action: 'sns:Publish'
+                Resource: { 'Fn::ImportValue': !Sub '${ProjectName}-AlertTopicArn' }
+              - Effect: Allow
+                Action: [ 'kms:GenerateDataKey', 'kms:Decrypt' ]
+                Resource: { 'Fn::ImportValue': !Sub '${ProjectName}-DataKeyArn' }
+
+  ResponderFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-incident-response'
+      Runtime: python3.12
+      Handler: handler.lambda_handler
+      Timeout: 60
+      Role: !GetAtt ResponderRole.Arn
+      Code: ../lambda/incident_response
+      Environment:
+        Variables:
+          QUARANTINE_SG: { 'Fn::ImportValue': !Sub '${ProjectName}-QuarantineSgId' }
+          TOPIC_ARN: { 'Fn::ImportValue': !Sub '${ProjectName}-AlertTopicArn' }
+          SEVERITY_THRESHOLD: !Ref SeverityThreshold
+          DRY_RUN: !Ref DryRun
+
+  GuardDutyRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: GuardDuty findings with severity >= threshold
+      EventPattern:
+        source: [ aws.guardduty ]
+        detail-type: [ GuardDuty Finding ]
+        detail:
+          severity: [ { numeric: [ '>=', !Ref SeverityThreshold ] } ]
+      Targets:
+        - { Id: responder, Arn: !GetAtt ResponderFunction.Arn }
+
+  SecurityHubRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: New CRITICAL Security Hub findings
+      EventPattern:
+        source: [ aws.securityhub ]
+        detail-type: [ Security Hub Findings - Imported ]
+        detail:
+          findings:
+            Severity: { Label: [ CRITICAL ] }
+            Workflow: { Status: [ NEW ] }
+            RecordState: [ ACTIVE ]
+      Targets:
+        - { Id: responder, Arn: !GetAtt ResponderFunction.Arn }
+
+  GuardDutyInvoke:
+    Type: AWS::Lambda::Permission
+    Properties: { FunctionName: !Ref ResponderFunction, Action: 'lambda:InvokeFunction', Principal: events.amazonaws.com, SourceArn: !GetAtt GuardDutyRule.Arn }
+  SecurityHubInvoke:
+    Type: AWS::Lambda::Permission
+    Properties: { FunctionName: !Ref ResponderFunction, Action: 'lambda:InvokeFunction', Principal: events.amazonaws.com, SourceArn: !GetAtt SecurityHubRule.Arn }
+
+Outputs:
+  FunctionName:
+    Value: !Ref ResponderFunction

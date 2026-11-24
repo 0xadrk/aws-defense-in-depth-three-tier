@@ -1,0 +1,146 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 07 - AWS Config rules with automatic SSM remediation for non-compliant resources
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: fortress3t
+
+Resources:
+  RemediationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-config-remediation'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - { Effect: Allow, Principal: { Service: ssm.amazonaws.com }, Action: 'sts:AssumeRole' }
+      Policies:
+        - PolicyName: remediate
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ec2:DescribeSecurityGroups'
+                  - 'ec2:RevokeSecurityGroupIngress'
+                  - 's3:GetBucketPublicAccessBlock'
+                  - 's3:PutBucketPublicAccessBlock'
+                  - 's3:GetBucketAcl'
+                  - 's3:PutBucketAcl'
+                  - 's3:GetBucketPolicy'
+                  - 's3:PutBucketPolicy'
+                  - 's3:DeleteBucketPolicy'
+                  - 's3:PutEncryptionConfiguration'
+                  - 's3:GetEncryptionConfiguration'
+                Resource: '*'
+
+  # ---- Rules with automatic remediation
+  SshRule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: !Sub '${ProjectName}-restricted-ssh'
+      Source: { Owner: AWS, SourceIdentifier: INCOMING_SSH_DISABLED }
+      Scope: { ComplianceResourceTypes: [ 'AWS::EC2::SecurityGroup' ] }
+  SshRemediation:
+    Type: AWS::Config::RemediationConfiguration
+    Properties:
+      ConfigRuleName: !Ref SshRule
+      TargetType: SSM_DOCUMENT
+      TargetId: AWS-DisablePublicAccessForSecurityGroup
+      Automatic: true
+      MaximumAutomaticAttempts: 3
+      RetryAttemptSeconds: 60
+      Parameters:
+        AutomationAssumeRole: { StaticValue: { Values: [ !GetAtt RemediationRole.Arn ] } }
+        GroupId: { ResourceValue: { Value: RESOURCE_ID } }
+
+  S3PublicReadRule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: !Sub '${ProjectName}-s3-public-read-prohibited'
+      Source: { Owner: AWS, SourceIdentifier: S3_BUCKET_PUBLIC_READ_PROHIBITED }
+      Scope: { ComplianceResourceTypes: [ 'AWS::S3::Bucket' ] }
+  S3PublicReadRemediation:
+    Type: AWS::Config::RemediationConfiguration
+    Properties:
+      ConfigRuleName: !Ref S3PublicReadRule
+      TargetType: SSM_DOCUMENT
+      TargetId: AWS-DisableS3BucketPublicReadWrite
+      Automatic: true
+      MaximumAutomaticAttempts: 3
+      RetryAttemptSeconds: 60
+      Parameters:
+        AutomationAssumeRole: { StaticValue: { Values: [ !GetAtt RemediationRole.Arn ] } }
+        S3BucketName: { ResourceValue: { Value: RESOURCE_ID } }
+
+  S3PublicWriteRule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: !Sub '${ProjectName}-s3-public-write-prohibited'
+      Source: { Owner: AWS, SourceIdentifier: S3_BUCKET_PUBLIC_WRITE_PROHIBITED }
+      Scope: { ComplianceResourceTypes: [ 'AWS::S3::Bucket' ] }
+  S3PublicWriteRemediation:
+    Type: AWS::Config::RemediationConfiguration
+    Properties:
+      ConfigRuleName: !Ref S3PublicWriteRule
+      TargetType: SSM_DOCUMENT
+      TargetId: AWS-DisableS3BucketPublicReadWrite
+      Automatic: true
+      MaximumAutomaticAttempts: 3
+      RetryAttemptSeconds: 60
+      Parameters:
+        AutomationAssumeRole: { StaticValue: { Values: [ !GetAtt RemediationRole.Arn ] } }
+        S3BucketName: { ResourceValue: { Value: RESOURCE_ID } }
+
+  S3EncryptionRule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: !Sub '${ProjectName}-s3-encryption-enabled'
+      Source: { Owner: AWS, SourceIdentifier: S3_BUCKET_SERVER_SIDE_ENCRYPTION_ENABLED }
+      Scope: { ComplianceResourceTypes: [ 'AWS::S3::Bucket' ] }
+  S3EncryptionRemediation:
+    Type: AWS::Config::RemediationConfiguration
+    Properties:
+      ConfigRuleName: !Ref S3EncryptionRule
+      TargetType: SSM_DOCUMENT
+      TargetId: AWS-EnableS3BucketEncryption
+      Automatic: true
+      MaximumAutomaticAttempts: 3
+      RetryAttemptSeconds: 60
+      Parameters:
+        AutomationAssumeRole: { StaticValue: { Values: [ !GetAtt RemediationRole.Arn ] } }
+        BucketName: { ResourceValue: { Value: RESOURCE_ID } }
+        SSEAlgorithm: { StaticValue: { Values: [ AES256 ] } }
+
+  # ---- Detective-only rules (encryption cannot be switched on in place for these)
+  EbsEncryptedRule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: !Sub '${ProjectName}-encrypted-volumes'
+      Source: { Owner: AWS, SourceIdentifier: ENCRYPTED_VOLUMES }
+  RdsEncryptedRule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: !Sub '${ProjectName}-rds-storage-encrypted'
+      Source: { Owner: AWS, SourceIdentifier: RDS_STORAGE_ENCRYPTED }
+  RootMfaRule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: !Sub '${ProjectName}-root-mfa-enabled'
+      Source: { Owner: AWS, SourceIdentifier: ROOT_ACCOUNT_MFA_ENABLED }
+  RootAccessKeyRule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: !Sub '${ProjectName}-root-no-access-key'
+      Source: { Owner: AWS, SourceIdentifier: IAM_ROOT_ACCESS_KEY_CHECK }
+  CloudTrailEnabledRule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: !Sub '${ProjectName}-cloudtrail-enabled'
+      Source: { Owner: AWS, SourceIdentifier: CLOUD_TRAIL_ENABLED }
+  LogValidationRule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: !Sub '${ProjectName}-cloudtrail-log-validation'
+      Source: { Owner: AWS, SourceIdentifier: CLOUD_TRAIL_LOG_FILE_VALIDATION_ENABLED }

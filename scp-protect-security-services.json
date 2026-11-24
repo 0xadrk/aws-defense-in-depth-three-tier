@@ -1,0 +1,25 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ProtectAuditAndDetection",
+      "Effect": "Deny",
+      "Action": [
+        "cloudtrail:StopLogging",
+        "cloudtrail:DeleteTrail",
+        "cloudtrail:UpdateTrail",
+        "guardduty:DeleteDetector",
+        "guardduty:DisassociateFromMasterAccount",
+        "guardduty:UpdateDetector",
+        "config:StopConfigurationRecorder",
+        "config:DeleteConfigurationRecorder",
+        "config:DeleteDeliveryChannel",
+        "securityhub:DisableSecurityHub",
+        "securityhub:BatchDisableStandards",
+        "ec2:DisableEbsEncryptionByDefault",
+        "organizations:LeaveOrganization"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
